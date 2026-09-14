@@ -5,7 +5,8 @@ const authEscape = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '
 const formatDate = value => value ? new Intl.DateTimeFormat('kk-KZ', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value)) : '—';
 
 async function api(path, options = {}) {
-  const response = await fetch(path, { credentials: 'same-origin', ...options });
+  const base = String(window.APP_API_BASE || '').replace(/\/$/, '');
+  const response = await fetch(`${base}${path}`, { credentials: base ? 'include' : 'same-origin', ...options });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
     const error = new Error(data.error || 'Сұрау орындалмады.');
@@ -100,7 +101,8 @@ function renderAdminSubmissions(submissions) {
     target.innerHTML = '<div class="empty">Әзірге жіберілген жұмыс жоқ.</div>';
     return;
   }
-  target.innerHTML = submissions.map(item => `<article class="card submission-card"><div class="submission-meta"><span><b>${authEscape(item.student.name)}</b> · ${authEscape(item.student.email)}</span><span>${formatDate(item.createdAt)}</span></div><h2>${authEscape(item.title)}</h2><p class="submission-text">${authEscape(item.analysis)}</p>${item.additionalSources ? `<details><summary>Дереккөздер мен көмек</summary><p>${authEscape(item.additionalSources)}</p></details>` : ''}${item.attachment ? `<p><a class="button secondary" href="/api/submissions/${encodeURIComponent(item.id)}/download">${authEscape(item.attachment.filename)} жүктеу</a> <span class="hint">${Math.ceil(item.attachment.size / 1024)} КБ</span></p>` : '<p class="hint">Файл тіркелмеген.</p>'}<p class="hint">Академиялық адалдық растауы: ${item.integrityConfirmed ? 'берілді' : 'берілмеді'}</p></article>`).join('');
+  const base = String(window.APP_API_BASE || '').replace(/\/$/, '');
+  target.innerHTML = submissions.map(item => `<article class="card submission-card"><div class="submission-meta"><span><b>${authEscape(item.student.name)}</b> · ${authEscape(item.student.email)}</span><span>${formatDate(item.createdAt)}</span></div><h2>${authEscape(item.title)}</h2><p class="submission-text">${authEscape(item.analysis)}</p>${item.additionalSources ? `<details><summary>Дереккөздер мен көмек</summary><p>${authEscape(item.additionalSources)}</p></details>` : ''}${item.attachment ? `<p><a class="button secondary" href="${base}/api/submissions/${encodeURIComponent(item.id)}/download">${authEscape(item.attachment.filename)} жүктеу</a> <span class="hint">${Math.ceil(item.attachment.size / 1024)} КБ</span></p>` : '<p class="hint">Файл тіркелмеген.</p>'}<p class="hint">Академиялық адалдық растауы: ${item.integrityConfirmed ? 'берілді' : 'берілмеді'}</p></article>`).join('');
 }
 
 async function loadAdminSubmissions() {
