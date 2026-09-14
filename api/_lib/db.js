@@ -31,5 +31,6 @@ export async function ensureIndexes() {
     db.collection('users').createIndex({ email: 1 }, { unique: true }),
     db.collection('submissions').createIndex({ studentId: 1, createdAt: -1 }),
     db.collection('submissions').createIndex({ createdAt: -1 }),
+    db.collection('progress').createIndex({ studentId: 1 }, { unique: true }),
   ]);
 }

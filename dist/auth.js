@@ -50,6 +50,7 @@ async function authRefresh() {
     authState.loaded = true;
     authState.loading = false;
     authHeader();
+    window.dispatchEvent(new Event('authstatechange'));
   }
 }
 
@@ -143,6 +144,7 @@ async function handleSubmission(form) {
   button.disabled = true;
   result.textContent = 'Жұмыс жіберілуде…';
   try {
+    if (window.syncLearningProgress) await window.syncLearningProgress();
     const data = new FormData(form);
     const response = await api('/api/submissions', { method: 'POST', body: data });
     result.innerHTML = authMessage(`Жұмыс жіберілді: ${response.submission.title}`);

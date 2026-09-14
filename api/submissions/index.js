@@ -50,6 +50,7 @@ export default async function handler(req, res) {
         student: { name: user.name, email: user.email },
         ...work,
         attachment,
+        grading: null,
         createdAt: now,
         updatedAt: now,
       };
