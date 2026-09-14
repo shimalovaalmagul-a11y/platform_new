@@ -1,3 +1,3 @@
-// Public API address. Leave empty only when the API is served from the same domain.
-// After deploying project-mom-back, replace the value with its Vercel URL.
-window.APP_API_BASE = '';
+// Public Railway API address. Public traffic uses HTTPS; Railway forwards it to
+// the service's internal PORT automatically.
+window.APP_API_BASE = 'https://project-mom-back-production.up.railway.app';
