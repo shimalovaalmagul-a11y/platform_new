@@ -1,0 +1,21 @@
+{
+  "name": "ushqan-uya-platform",
+  "version": "1.0.0",
+  "private": true,
+  "description": "MYP learning platform for Ұшқан ұя",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "node scripts/verify-static.cjs",
+    "test": "node --test test/*.test.mjs",
+    "check": "node scripts/check-syntax.cjs"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "busboy": "^1.6.0",
+    "jose": "^5.9.6",
+    "mongodb": "^6.19.0"
+  }
+}
