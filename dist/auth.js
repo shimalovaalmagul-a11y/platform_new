@@ -175,8 +175,8 @@ async function handleAuthForm(form, endpoint) {
 async function handleSubmission(form) {
   const result = form.querySelector('.form-result');
   const button = form.querySelector('button[type="submit"]');
-  if (typeof integrity !== 'undefined' && !integrity.accepted) {
-    result.innerHTML = authMessage('Алдымен қорытынды жұмыс бетіндегі академиялық адалдық растауын белгілеңіз.', true);
+  if (!form.elements.integrityConfirmed.checked) {
+    result.innerHTML = authMessage('Жұмысты жіберу формасындағы академиялық адалдық растауын белгілеңіз.', true);
     return;
   }
   button.disabled = true;
@@ -184,6 +184,7 @@ async function handleSubmission(form) {
   try {
     if (window.syncLearningProgress) await window.syncLearningProgress();
     const data = new FormData(form);
+    data.set('integrityConfirmed', 'true');
     const response = await api('/api/submissions', { method: 'POST', body: data });
     result.innerHTML = authMessage(`Жұмыс жіберілді: ${response.submission.title}`);
     form.reset();

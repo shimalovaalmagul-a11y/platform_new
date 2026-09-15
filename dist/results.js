@@ -121,7 +121,7 @@ function studentResultsView() {
 }
 
 function adminResultsView() {
-  return head('НӘТИЖЕЛЕР ЖӘНЕ ЗЕРТТЕУ', 'Сыныптың оқу<br><em>динамикасы</em>', 'Атаулы деректер тек әкімшіге көрінеді. Жиынтық диаграмма зерттеу үшін қолданылады.') + '<div class="actions"><button class="primary" data-result-action="refresh">Жаңарту</button><button class="secondary" data-result-action="csv">CSV жүктеу</button></div><div id="results-content" role="status">Нәтижелер жүктелуде…</div>';
+  return head('НӘТИЖЕЛЕР ЖӘНЕ ЗЕРТТЕУ', 'Сыныптың оқу<br><em>динамикасы</em>', 'Атаулы деректер тек әкімшіге көрінеді. Жиынтық диаграмма зерттеу үшін қолданылады.') + '<div class="actions"><button class="primary" data-result-action="refresh">Жаңарту</button><button class="secondary" data-result-action="csv">CSV жүктеу</button></div><div id="results-action-status" role="status" aria-live="polite"></div><div id="results-content" role="status">Нәтижелер жүктелуде…</div>';
 }
 
 function renderStudentResults(data) {
@@ -156,6 +156,52 @@ function renderAdminResults(data, submissions) {
   const summary = data.summary;
   const students = data.students || [];
   target.innerHTML = `<section class="summary-grid"><article class="card"><small>ТІРКЕЛГЕН ОҚУШЫ</small><strong>${summary.students}</strong></article><article class="card"><small>ОҚУДЫ АЯҚТАДЫ</small><strong>${summary.learningComplete}</strong></article><article class="card"><small>БАҒАЛАНДЫ</small><strong>${summary.graded}</strong></article><article class="card"><small>ОРТАША ҰПАЙ</small><strong>${summary.averageA ?? '—'} / ${summary.averageD ?? '—'}</strong><span>А / Д</span></article></section><section class="card results-card"><h2>Критерийлер бойынша орташа нәтиже</h2>${resultBar('А · Талдау', summary.averageA || 0, 8, summary.averageA === null ? 'Баға жоқ' : `${summary.averageA} / 8`)}${resultBar('Д · Тілді қолдану', summary.averageD || 0, 8, summary.averageD === null ? 'Баға жоқ' : `${summary.averageD} / 8`)}</section><section class="card results-card"><h2>Оқушылардың ілгерілеуі</h2><div class="results-table-wrap"><table class="results-table"><thead><tr><th>Оқушы</th><th>Сабақ</th><th>Тест</th><th>Дайындық</th><th>А</th><th>Д</th><th>Күйі</th></tr></thead><tbody>${students.map(student => `<tr><td><b>${authEscape(student.name)}</b><br><small>${authEscape(student.email)}</small></td><td>${student.progress.lessonIds.length} / 6</td><td>${student.progress.quiz?.completed ? `${student.progress.quiz.score} / ${student.progress.quiz.total}` : '—'}</td><td>${student.progress.finalPrepared ? 'Иә' : '—'}</td><td>${student.grade?.scoreA ?? '—'}</td><td>${student.grade?.scoreD ?? '—'}</td><td>${student.grade ? 'Бағаланды' : student.learningComplete ? 'Бағалауды күтеді' : 'Орындалуда'}</td></tr>`).join('') || '<tr><td colspan="7">Әзірге тіркелген оқушы жоқ.</td></tr>'}</tbody></table></div></section><section class="results-card"><h2>Жұмыстарды бағалау</h2>${submissions.map(item => `<article class="card submission-card"><div class="submission-meta"><span><b>${authEscape(item.student.name)}</b> · ${authEscape(item.student.email)}</span><span>${formatDate(item.createdAt)}</span></div><h3>${authEscape(item.title)}</h3><p class="submission-text">${authEscape(item.analysis)}</p>${gradeForm(item)}</article>`).join('') || '<div class="empty">Бағалайтын жұмыс жоқ.</div>'}</section>`;
+  const table = target.querySelector('.results-table');
+  if (Number.isInteger(summary.registeredStudents)) {
+    const actionHeading = document.createElement('th');
+    actionHeading.textContent = 'Әрекет';
+    table.querySelector('thead tr').append(actionHeading);
+    students.forEach((student, index) => {
+      const cell = document.createElement('td');
+      const button = document.createElement('button');
+      button.className = 'secondary result-delete';
+      button.textContent = 'Өшіру';
+      button.dataset.resultAction = 'exclude-student';
+      button.dataset.studentId = student.id;
+      button.dataset.studentName = student.name;
+      cell.append(button);
+      table.querySelectorAll('tbody tr')[index].append(cell);
+    });
+    if (!students.length) table.querySelector('tbody td').colSpan = 8;
+    const population = target.querySelector('.summary-grid article small');
+    population.textContent = 'СТАТИСТИКАҒА ЕНГЕН ОҚУШЫ';
+    if (summary.excluded) population.closest('article').insertAdjacentHTML('beforeend', `<span>${summary.excluded} нәтиже шығарылды; барлығы ${summary.registeredStudents} оқушы тіркелген.</span>`);
+    const excludedStudents = data.excludedStudents || [];
+    if (excludedStudents.length) {
+      table.closest('section').insertAdjacentHTML('afterend', `<details class="card results-card"><summary>Статистикадан шығарылған нәтижелер (${excludedStudents.length})</summary><p class="hint">Бұл оқушылардың аккаунты мен жұмыстары сақталған. Орташа балл мен CSV есебіне қосылмайды.</p><div class="results-table-wrap"><table class="results-table"><thead><tr><th>Оқушы</th><th>Шығарылған уақыты</th><th>Әрекет</th></tr></thead><tbody>${excludedStudents.map(student => `<tr><td><b>${authEscape(student.name)}</b><br><small>${authEscape(student.email)}</small></td><td>${formatDate(student.excludedAt)}</td><td><button class="secondary" data-result-action="restore-student" data-student-id="${authEscape(student.id)}">Қалпына келтіру</button></td></tr>`).join('')}</tbody></table></div></details>`);
+    }
+  } else {
+    table.closest('section').insertAdjacentHTML('afterbegin', '<p class="hint">Нәтижені өшіру қызметі әзірше қолжетімсіз.</p>');
+  }
+}
+
+async function changeStudentInclusion(button, exclude) {
+  if (authState.user?.role !== 'admin') return;
+  const status = document.getElementById('results-action-status');
+  if (exclude && !window.confirm(`${button.dataset.studentName} нәтижесін статистикадан өшіресіз бе? Бұл оқушы орташа балл мен CSV есебінен шығарылады. Аккаунты мен жұмыстары сақталады.`)) {
+    if (status) status.textContent = 'Өшіру тоқтатылды.';
+    return;
+  }
+  button.disabled = true;
+  if (status) status.textContent = exclude ? 'Нәтиже шығарылуда…' : 'Нәтиже қалпына келтірілуде…';
+  try {
+    await api(`/api/admin/results/${encodeURIComponent(button.dataset.studentId)}`, { method: exclude ? 'DELETE' : 'PATCH' });
+    await loadResults();
+    if (status) status.innerHTML = authMessage(exclude ? 'Нәтиже статистикадан шығарылды. Орташа балл қайта есептелді.' : 'Нәтиже қалпына келтірілді. Орташа балл қайта есептелді.');
+  } catch (error) {
+    if (status) status.innerHTML = authMessage(error.message, true);
+    button.disabled = false;
+  }
 }
 
 async function loadResults() {
@@ -227,6 +273,7 @@ document.addEventListener('click', event => {
   if (learningActions.has(action)) setTimeout(() => window.syncLearningProgress(), 0);
   const resultAction = event.target.closest('[data-result-action]')?.dataset.resultAction;
   if (resultAction === 'save-quiz') window.saveFinishedQuiz();
+  if (resultAction === 'exclude-student' || resultAction === 'restore-student') changeStudentInclusion(event.target.closest('[data-result-action]'), resultAction === 'exclude-student');
   if (resultAction === 'refresh') loadResults();
   if (resultAction === 'csv') downloadCsv();
 });
