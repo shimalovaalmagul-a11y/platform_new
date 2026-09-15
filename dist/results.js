@@ -77,8 +77,17 @@ window.saveFinishedQuiz = async function saveFinishedQuiz() {
       quizSave.message = `Нәтиже сақталды: ${response.progress.quiz.score} / ${response.progress.quiz.total}. Мұғалім оны әкімші панелінен көре алады.`;
       return true;
     } catch (error) {
-      quizSave.status = 'error';
-      quizSave.message = `Нәтиже сақталмады: ${error.message} Қайта сақтау батырмасын бас.`;
+      if (error.status === 401) {
+        authState.user = null;
+        setAuthToken('');
+        authHeader();
+        window.dispatchEvent(new Event('authstatechange'));
+        quizSave.status = 'guest';
+        quizSave.message = 'Нәтиже сақталмады: жүйеге қайта кіріп, оны сақта.';
+      } else {
+        quizSave.status = 'error';
+        quizSave.message = `Нәтиже сақталмады: ${error.message} Қайта сақтау батырмасын бас.`;
+      }
       return false;
     } finally {
       quizSave.pending = null;
