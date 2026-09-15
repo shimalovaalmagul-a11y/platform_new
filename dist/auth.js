@@ -1,12 +1,25 @@
 'use strict';
-const authState = { user: null, loaded: false, loading: false, error: '', adminLoaded: false };
+const AUTH_TOKEN_KEY = 'ushqan_access_token';
+function storedAuthToken() {
+  try { return sessionStorage.getItem(AUTH_TOKEN_KEY) || ''; } catch { return ''; }
+}
+function setAuthToken(token) {
+  authState.token = token || '';
+  try {
+    if (authState.token) sessionStorage.setItem(AUTH_TOKEN_KEY, authState.token);
+    else sessionStorage.removeItem(AUTH_TOKEN_KEY);
+  } catch { /* The current tab still retains the token in memory. */ }
+}
+const authState = { user: null, token: storedAuthToken(), loaded: false, loading: false, error: '', adminLoaded: false };
 const API_BASE = 'https://project-mom-back-production.up.railway.app';
 
 const authEscape = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
 const formatDate = value => value ? new Intl.DateTimeFormat('kk-KZ', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value)) : '—';
 
 async function api(path, options = {}) {
-  const response = await fetch(`${API_BASE}${path}`, { credentials: 'include', ...options });
+  const headers = new Headers(options.headers || {});
+  if (authState.token) headers.set('Authorization', `Bearer ${authState.token}`);
+  const response = await fetch(`${API_BASE}${path}`, { credentials: 'include', ...options, headers });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
     const error = new Error(data.error || 'Сұрау орындалмады.');
@@ -47,6 +60,7 @@ async function authRefresh() {
   } catch (error) {
     authState.user = null;
     authState.error = error.message;
+    if (error.status === 401) setAuthToken('');
   } finally {
     authState.loaded = true;
     authState.loading = false;
@@ -89,9 +103,25 @@ function adminPage() {
   if (!authState.loaded) return head('ӘКІМШІ ПАНЕЛІ', 'Тіркелгіні тексеру…');
   if (!authState.user) return head('ӘКІМШІ ПАНЕЛІ', 'Кіру қажет') + `<a class="button" href="#account">Әкімші ретінде кіру →</a>`;
   if (authState.user.role !== 'admin') return head('ӘКІМШІ ПАНЕЛІ', 'Қолжетімділік жоқ', 'Бұл бөлім тек әкімші тіркелгісіне ашық.');
-  return head('ӘКІМШІ ПАНЕЛІ', 'Оқушылардың жұмыстары', 'Соңғы жіберілген жұмыстар осында көрсетіледі.') + `
+  return head('ӘКІМШІ ПАНЕЛІ', 'Жұмыстар мен тест нәтижелері', 'Тест ұпайы оқушы оны орындаған соң бірден көрінеді; талдау жұмысы бөлек жіберіледі.') + `
     <div class="actions"><button class="primary" data-auth-action="reload-admin">Жаңарту</button><button class="secondary" data-auth-action="logout">Шығу</button></div>
-    <div id="admin-result" class="hint" role="status">Жұмыстар жүктелуде…</div><div id="admin-submissions"></div>`;
+    <section class="card results-card"><div class="submission-meta"><h2>Мазмұн тестінің нәтижелері</h2><a class="text-link" href="#results">Толық нәтижелер мен CSV →</a></div><div id="admin-quiz-result" class="hint" role="status">Нәтижелер жүктелуде…</div><div id="admin-quiz-table"></div></section>
+    <section class="results-card"><h2>Жіберілген талдаулар</h2><div id="admin-result" class="hint" role="status">Жұмыстар жүктелуде…</div><div id="admin-submissions"></div></section>`;
+}
+
+async function loadAdminQuizResults() {
+  const result = document.getElementById('admin-quiz-result');
+  const target = document.getElementById('admin-quiz-table');
+  if (!result || !target) return;
+  result.textContent = 'Нәтижелер жүктелуде…';
+  try {
+    const { students } = await api('/api/admin/results');
+    const completed = students.filter(student => student.progress.quiz?.completed);
+    result.textContent = `${completed.length} / ${students.length} оқушы тестті аяқтады.`;
+    target.innerHTML = completed.length ? `<div class="results-table-wrap"><table class="results-table"><thead><tr><th>Оқушы</th><th>Тест</th><th>Сақталған уақыты</th></tr></thead><tbody>${completed.map(student => `<tr><td><b>${authEscape(student.name)}</b><br><small>${authEscape(student.email)}</small></td><td>${student.progress.quiz.score} / ${student.progress.quiz.total}</td><td>${formatDate(student.progress.updatedAt)}</td></tr>`).join('')}</tbody></table></div>` : '<div class="empty">Әзірге сақталған тест нәтижесі жоқ.</div>';
+  } catch (error) {
+    result.innerHTML = authMessage(error.message, true);
+  }
 }
 
 function renderAdminSubmissions(submissions) {
@@ -126,9 +156,16 @@ async function handleAuthForm(form, endpoint) {
     const data = Object.fromEntries(new FormData(form));
     const response = await api(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
     authState.user = response.user;
+    setAuthToken(response.token || '');
     authState.loaded = true;
     authHeader();
-    location.hash = authState.user.role === 'admin' ? 'admin' : 'submit';
+    window.dispatchEvent(new Event('authstatechange'));
+    if (authState.user.role === 'student' && typeof state !== 'undefined' && typeof questions !== 'undefined' && state.qi >= questions.length && window.saveFinishedQuiz) {
+      await window.saveFinishedQuiz();
+      location.hash = 'quiz';
+    } else {
+      location.hash = authState.user.role === 'admin' ? 'admin' : 'submit';
+    }
   } catch (error) {
     result.innerHTML = authMessage(error.message, true);
     button.disabled = false;
@@ -163,7 +200,10 @@ function authEnhance(view) {
     if (location.hash.slice(1).split('/')[0] === view && ['account', 'submit', 'admin'].includes(view)) render();
   });
   authHeader();
-  if (view === 'admin' && authState.user?.role === 'admin') loadAdminSubmissions();
+  if (view === 'admin' && authState.user?.role === 'admin') {
+    loadAdminSubmissions();
+    loadAdminQuizResults();
+  }
 }
 
 document.addEventListener('submit', event => {
@@ -175,8 +215,8 @@ document.addEventListener('submit', event => {
 document.addEventListener('click', event => {
   const action = event.target.closest('[data-auth-action]')?.dataset.authAction;
   if (!action) return;
-  if (action === 'reload-admin') loadAdminSubmissions();
-  if (action === 'logout') api('/api/auth/logout', { method: 'POST' }).finally(() => { authState.user = null; authState.loaded = true; authHeader(); location.hash = 'account'; });
+  if (action === 'reload-admin') { loadAdminSubmissions(); loadAdminQuizResults(); }
+  if (action === 'logout') api('/api/auth/logout', { method: 'POST' }).catch(() => {}).finally(() => { setAuthToken(''); authState.user = null; authState.loaded = true; authHeader(); window.dispatchEvent(new Event('authstatechange')); location.hash = 'account'; showAuthRoute(); });
 });
 
 function markAuthView(view) {

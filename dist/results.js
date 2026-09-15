@@ -1,7 +1,8 @@
 'use strict';
 
 const resultState = { data: null, submissions: null, loading: false };
-const learningActions = new Set(['complete', 'match-check', 'sequence-check', 'device-check', 'quiz-next', 'assemble', 'final-review', 'self-review']);
+const learningActions = new Set(['complete', 'match-check', 'sequence-check', 'device-check', 'assemble', 'final-review', 'self-review']);
+const quizSave = { status: '', message: '', pending: null };
 
 function resultBar(label, value, maximum, caption) {
   const score = Math.max(0, Number(value) || 0);
@@ -25,15 +26,66 @@ function learningSnapshot() {
   };
 }
 
-window.syncLearningProgress = async function syncLearningProgress() {
+window.syncLearningProgress = async function syncLearningProgress({ silent = true } = {}) {
   if (!authState.user || authState.user.role === 'admin') return null;
   const snapshot = learningSnapshot();
   if (!snapshot) return null;
   try {
     return await api('/api/progress', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(snapshot) });
-  } catch {
+  } catch (error) {
+    if (!silent) throw error;
     return null;
   }
+};
+
+function showQuizSaveStatus() {
+  if (location.hash.slice(1).split('/')[0] !== 'quiz' || typeof state === 'undefined' || typeof questions === 'undefined' || state.qi < questions.length) return;
+  const view = document.getElementById('view');
+  const actions = view?.querySelector('.actions');
+  if (!actions) return;
+  let target = document.getElementById('quiz-save-status');
+  if (!target) {
+    target = document.createElement('div');
+    target.id = 'quiz-save-status';
+    target.setAttribute('role', 'status');
+    target.setAttribute('aria-live', 'polite');
+    actions.before(target);
+  }
+  const status = quizSave.status || (authState.user ? 'pending' : 'guest');
+  const message = quizSave.message || (status === 'guest' ? 'Нәтиже әзірше осы бетте ғана тұр. Мұғалімге көрінуі үшін тіркел немесе жүйеге кір.' : 'Нәтижені мұғалімге сақтау қажет.');
+  const action = status === 'guest' ? '<p><a class="button secondary" href="#account">Нәтижені сақтау үшін кіру →</a></p>' : status === 'error' || status === 'pending' ? '<p><button class="secondary" data-result-action="save-quiz">Қайта сақтау</button></p>' : '';
+  target.innerHTML = `<div class="feedback ${status === 'error' ? 'error' : ''}"><b>${authEscape(message)}</b>${action}</div>`;
+}
+
+window.saveFinishedQuiz = async function saveFinishedQuiz() {
+  if (typeof state === 'undefined' || typeof questions === 'undefined' || state.qi < questions.length) return false;
+  if (!authState.user) {
+    quizSave.status = 'guest';
+    quizSave.message = '';
+    showQuizSaveStatus();
+    return false;
+  }
+  if (quizSave.pending) return quizSave.pending;
+  quizSave.status = 'saving';
+  quizSave.message = 'Нәтиже деректер қорына сақталуда…';
+  showQuizSaveStatus();
+  quizSave.pending = (async () => {
+    try {
+      const response = await window.syncLearningProgress({ silent: false });
+      if (!response?.progress?.quiz?.completed) throw new Error('Сервер тест нәтижесін растаған жоқ.');
+      quizSave.status = 'saved';
+      quizSave.message = `Нәтиже сақталды: ${response.progress.quiz.score} / ${response.progress.quiz.total}. Мұғалім оны әкімші панелінен көре алады.`;
+      return true;
+    } catch (error) {
+      quizSave.status = 'error';
+      quizSave.message = `Нәтиже сақталмады: ${error.message} Қайта сақтау батырмасын бас.`;
+      return false;
+    } finally {
+      quizSave.pending = null;
+      showQuizSaveStatus();
+    }
+  })();
+  return quizSave.pending;
 };
 
 function updateResultsNavigation() {
@@ -146,6 +198,7 @@ function downloadCsv() {
 
 function renderResultsRoute() {
   updateResultsNavigation();
+  showQuizSaveStatus();
   if (location.hash.slice(1).split('/')[0] !== 'results') return;
   const target = document.getElementById('view');
   if (!target) return;
@@ -160,8 +213,11 @@ function renderResultsRoute() {
 
 document.addEventListener('click', event => {
   const action = event.target.closest('[data-action]')?.dataset.action;
+  if (action === 'quiz-next') setTimeout(() => window.saveFinishedQuiz(), 0);
+  if (action === 'quiz-reset') { quizSave.status = ''; quizSave.message = ''; }
   if (learningActions.has(action)) setTimeout(() => window.syncLearningProgress(), 0);
   const resultAction = event.target.closest('[data-result-action]')?.dataset.resultAction;
+  if (resultAction === 'save-quiz') window.saveFinishedQuiz();
   if (resultAction === 'refresh') loadResults();
   if (resultAction === 'csv') downloadCsv();
 });
